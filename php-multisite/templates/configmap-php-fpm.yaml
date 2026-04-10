@@ -1,0 +1,57 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "php-multisite.fullname" . }}-php-fpm
+  labels:
+    {{- include "php-multisite.labels" . | nindent 4 }}
+data:
+  zz-custom.conf: |
+    [www]
+    ; Pool name
+    user = nginx
+    group = nginx
+    
+    ; Listen on localhost
+    listen = 127.0.0.1:9000
+    
+    ; Process manager settings
+    pm = dynamic
+    pm.max_children = {{ .Values.php.fpm.pmMaxChildren }}
+    pm.start_servers = {{ .Values.php.fpm.pmStartServers }}
+    pm.min_spare_servers = {{ .Values.php.fpm.pmMinSpareServers }}
+    pm.max_spare_servers = {{ .Values.php.fpm.pmMaxSpareServers }}
+    pm.max_requests = 500
+    
+    ; Process timeout
+    request_terminate_timeout = {{ .Values.php.ini.max_execution_time }}s
+    
+    ; Catch output from workers
+    catch_workers_output = yes
+    
+    ; Clear environment
+    clear_env = no
+    
+    ; PHP admin values
+    php_admin_value[error_log] = /var/log/php-fpm/error.log
+    php_admin_flag[log_errors] = on
+    
+    ; PHP values
+    php_value[session.save_handler] = files
+    php_value[session.save_path] = /tmp
+    php_value[soap.wsdl_cache_dir] = /tmp
+    
+    ; Security
+    php_admin_value[disable_functions] = exec,passthru,shell_exec,system,proc_open,popen,curl_exec,curl_multi_exec,parse_ini_file,show_source
+    
+    ; Status page (for monitoring)
+    pm.status_path = /fpm-status
+    ping.path = /fpm-ping
+    ping.response = pong
+    
+    ; Slow log
+    slowlog = /var/log/php-fpm/slow.log
+    request_slowlog_timeout = 10s
+    
+    ; Access log
+    access.log = /var/log/php-fpm/access.log
+    access.format = "%R - %u %t \"%m %r%Q%q\" %s %f %{mili}d %{kilo}M %C%%"

@@ -1,0 +1,232 @@
+# Default values for php-multisite chart
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+# Override chart name
+nameOverride: ''
+fullnameOverride: ''
+
+# User/Tenant identifier
+user:
+  username: 'pedro2'
+  # Namespace will be derived from release namespace
+
+# Replica count for the deployment
+replicaCount: 1
+
+# Docker images configuration
+image:
+  # Nginx + PHP-FPM image
+  repository: php
+  tag: '8.3-fpm-alpine'
+  pullPolicy: IfNotPresent
+
+  # Nginx image (sidecar)
+  nginx:
+    repository: nginx
+    tag: '1.25-alpine'
+    pullPolicy: IfNotPresent
+
+# Image pull secrets (if using private registry)
+imagePullSecrets: []
+
+# Service account
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ''
+  # Automatically mount service account token in pods
+  automountServiceAccountToken: true
+
+# Domains configuration
+domains:
+  # List of domains for this user
+  # Managed by your API - add/remove domains will update this ConfigMap
+  # Your API will trigger ConfigMap update → pod restart → new Nginx config loaded
+  list:
+    - 'abc.example.xyz'
+
+# TinyFileManager configuration
+tinyFileManager:
+  enabled: true
+  rootPath: '/var/www/userdata' # Root directory for file management
+  showHiddenFiles: false
+  allowEdit: true
+  allowedExtensions: '' # Empty means all allowed
+  allowedUploadExtensions: '' # Empty means all allowed
+
+# Persistent storage configuration
+persistence:
+  enabled: true
+
+  # Storage class (use default if not specified)
+  storageClass: ''
+
+  # Access mode
+  accessMode: ReadWriteOnce
+
+  # Storage size
+  size: 2Gi
+
+  # Existing claim (if you want to use an existing PVC)
+  existingClaim: ''
+
+  # Mount path inside container
+  mountPath: /var/www/userdata
+
+  # Annotations for PVC
+  annotations: {}
+
+  # Label selector for PV binding (optional)
+  selector: {}
+  # Example:
+  # selector:
+  #   matchLabels:
+  #     app: myapp
+
+# PHP configuration
+php:
+  # PHP-FPM settings
+  fpm:
+    pmMaxChildren: 20
+    pmStartServers: 5
+    pmMinSpareServers: 3
+    pmMaxSpareServers: 10
+
+  # PHP.ini settings
+  ini:
+    memory_limit: '128M'
+    max_execution_time: 30
+    max_input_time: 60
+    upload_max_filesize: '64M'
+    post_max_size: '64M'
+
+  # Timezone
+  timezone: 'UTC'
+
+# Nginx configuration
+nginx:
+  # Worker processes
+  workerProcesses: auto
+  workerConnections: 1024
+
+  # Client body size
+  clientMaxBodySize: '128M'
+
+  # Custom nginx config (advanced users)
+  customConfig: ''
+
+# Service configuration
+# Service is only accessed internally by the main API proxy
+service:
+  annotations: {}
+
+# Ingress configuration
+# Disabled by default: All traffic is routed through the main API proxy (files.api.xyz)
+# The main ingress in your orchestration app handles routing to this service
+# Enable this only for testing/development purposes
+ingress:
+  enabled: true
+  filemanager:
+    host: 'user.files.example.xyz'
+  className: 'traefik'
+  annotations:
+    cert-manager.io/issuer: 'letsencrypt-cloudflare'
+    cert-manager.io/issuer-kind: 'Issuer' # explicit, defaults to Issuer anyway
+    traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
+    traefik.ingress.kubernetes.io/router.tls: 'true'
+    traefik.ingress.kubernetes.io/router.middlewares: 'default-kubepanel-geo-check@kubernetescrd'
+  tls:
+    enabled: true
+
+# Resource limits and requests
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+# Deployment strategy for ConfigMap updates
+# When your API updates the ConfigMap, the checksum annotation changes
+# This triggers a rolling restart to load new Nginx configuration
+deploymentStrategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxSurge: 1
+    maxUnavailable: 0
+
+# Autoscaling — HPA scales replicas based on traffic load independently of
+# ConfigMap-triggered rolling restarts (which only update nginx/php config).
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 75
+
+# Node selector
+nodeSelector: {}
+
+# Tolerations
+tolerations: []
+
+# Affinity
+affinity: {}
+
+# Security context for pods
+podSecurityContext:
+  fsGroup: 33
+  runAsUser: 33
+  runAsNonRoot: true
+
+# Security context for containers
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: false
+  runAsNonRoot: true
+  runAsUser: 33
+
+# Liveness and readiness probes
+livenessProbe:
+  enabled: true
+  httpGet:
+    path: /
+    port: http # References the 'http' port name (8080)
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+readinessProbe:
+  enabled: true
+  httpGet:
+    path: /
+    port: http # References the 'http' port name (8080)
+  initialDelaySeconds: 10
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 3
+
+# Pod annotations
+podAnnotations: {}
+
+# Pod labels
+podLabels: {}
+
+# Priority class name
+priorityClassName: ''
+
+# Init containers (for setting up TinyFileManager, etc.)
+initContainers:
+  enabled: true
+
+cloudflare:
+  enabled: true
+  apiToken: '' # injected per-tenant at deploy time
+  email: ''
+  acmeServer: 'https://acme-v02.api.letsencrypt.org/directory'

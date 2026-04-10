@@ -1,0 +1,30 @@
+{{- if .Values.cloudflare.enabled }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: cloudflare-api-token
+  namespace: {{ .Release.Namespace }}
+type: Opaque
+stringData:
+  api-token: {{ .Values.cloudflare.apiToken | required "cloudflare.apiToken is required" }}
+  email: {{ .Values.cloudflare.email | required "cloudflare.email is required" }}
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: letsencrypt-cloudflare
+  namespace: {{ .Release.Namespace }}
+spec:
+  acme:
+    server: {{ .Values.cloudflare.acmeServer | default "https://acme-v02.api.letsencrypt.org/directory" }}
+    email: {{ .Values.cloudflare.email | required "cloudflare.email is required" }}
+    privateKeySecretRef:
+      name: letsencrypt-cloudflare-key
+    solvers:
+    - dns01:
+        cloudflare:
+          email: {{ .Values.cloudflare.email }}
+          apiKeySecretRef:
+            name: cloudflare-api-token
+            key: api-token
+{{- end }}

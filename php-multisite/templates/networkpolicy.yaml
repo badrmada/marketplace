@@ -1,0 +1,108 @@
+# ============================================================================
+# BASELINE: Default deny-all
+#
+# Blocks all ingress and egress for every pod in this user namespace.
+# This is the tenant isolation foundation — a compromised user pod cannot
+# reach the KubePanel control plane, other users' namespaces, Redis,
+# PostgreSQL, or any other in-cluster service.
+# All permitted traffic is explicitly opened by the policies below.
+# ============================================================================
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: '{{ .Release.Namespace }}'
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+---
+# ============================================================================
+# DNS egress — all pods
+#
+# Allows every pod in this user namespace to reach CoreDNS in kube-system
+# for service name resolution (e.g. external hostnames, cluster services).
+# Without this, PHP applications cannot resolve any domain name.
+# ============================================================================
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-egress
+  namespace: '{{ .Release.Namespace }}'
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+---
+# ============================================================================
+# PHP multisite pod — ingress from Traefik only
+#
+# Allows only the Traefik ingress controller to send traffic to the user's
+# nginx+php-fpm pod on port 80. By the time Traefik forwards a request here,
+# it has already passed two ForwardAuth middleware checks:
+#   1. GeoGuard (geo-check): verified the client country is allowed
+#   2. KubePanel API (auth/verify): validated the session token
+# No other source — including the KubePanel API or other tenant pods — can
+# reach this pod directly. This enforces hard tenant isolation at the network
+# layer regardless of application-level misconfigurations.
+# ============================================================================
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-from-traefik
+  namespace: '{{ .Release.Namespace }}'
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: php-multisite
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - port: 80
+          protocol: TCP
+---
+# ============================================================================
+# PHP multisite pod — external egress
+#
+# Allows user PHP applications to make outbound HTTP/HTTPS requests to the
+# public internet (e.g. payment gateways, external APIs, CDN resources).
+# RFC1918 private ranges are explicitly excluded so user pods cannot reach
+# any in-cluster service — the control plane, other tenants' pods, Redis,
+# PostgreSQL, or any private infrastructure — even if they try to.
+# This gives tenants internet access without any lateral movement capability.
+# ============================================================================
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-external-egress
+  namespace: '{{ .Release.Namespace }}'
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: php-multisite
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16

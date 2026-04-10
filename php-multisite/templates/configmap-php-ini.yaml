@@ -1,0 +1,77 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "php-multisite.fullname" . }}-php-ini
+  labels:
+    {{- include "php-multisite.labels" . | nindent 4 }}
+data:
+  custom.ini: |
+    ; PHP Configuration
+    
+    ; Memory & Performance
+    memory_limit = {{ .Values.php.ini.memory_limit }}
+    max_execution_time = {{ .Values.php.ini.max_execution_time }}
+    max_input_time = {{ .Values.php.ini.max_input_time }}
+    
+    ; File Uploads
+    upload_max_filesize = {{ .Values.php.ini.upload_max_filesize }}
+    post_max_size = {{ .Values.php.ini.post_max_size }}
+    file_uploads = On
+    max_file_uploads = 20
+    
+    ; Error Reporting
+    display_errors = Off
+    display_startup_errors = Off
+    log_errors = On
+    error_reporting = E_ALL & ~E_DEPRECATED & ~E_STRICT
+    error_log = /var/log/php/error.log
+    
+    ; Date & Time
+    date.timezone = {{ .Values.php.timezone }}
+    
+    ; Session
+    session.save_handler = files
+    session.save_path = "/tmp"
+    session.gc_probability = 1
+    session.gc_divisor = 1000
+    session.gc_maxlifetime = 1440
+    session.cookie_httponly = On
+    session.cookie_samesite = "Lax"
+    
+    ; Security
+    expose_php = Off
+    allow_url_fopen = On
+    allow_url_include = Off
+    
+    ; OPcache (for performance)
+    opcache.enable = 1
+    opcache.enable_cli = 0
+    opcache.memory_consumption = 128
+    opcache.interned_strings_buffer = 8
+    opcache.max_accelerated_files = 10000
+    opcache.revalidate_freq = 2
+    opcache.validate_timestamps = 1
+    opcache.save_comments = 1
+    opcache.fast_shutdown = 1
+    
+    ; Output buffering
+    output_buffering = 4096
+    
+    ; Resource limits
+    max_input_vars = 3000
+    default_socket_timeout = 60
+    
+    ; Multibyte
+    mbstring.language = UTF-8
+    mbstring.internal_encoding = UTF-8
+    mbstring.http_output = UTF-8
+    
+    ; MySQL/PDO
+    pdo_mysql.cache_size = 2000
+    
+    ; Mail (if needed)
+    sendmail_path = /usr/sbin/sendmail -t -i
+    
+    ; Realpath cache
+    realpath_cache_size = 4096k
+    realpath_cache_ttl = 120

@@ -1,0 +1,211 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "php-multisite.fullname" . }}
+  labels:
+    {{- include "php-multisite.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  strategy:
+    type: {{ .Values.deploymentStrategy.type }}
+    {{- if eq .Values.deploymentStrategy.type "RollingUpdate" }}
+    rollingUpdate:
+      maxSurge: {{ .Values.deploymentStrategy.rollingUpdate.maxSurge }}
+      maxUnavailable: {{ .Values.deploymentStrategy.rollingUpdate.maxUnavailable }}
+    {{- end }}
+  selector:
+    matchLabels:
+      {{- include "php-multisite.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/vhosts: {{ include (print $.Template.BasePath "/configmap-vhosts.yaml") . | sha256sum }}
+        checksum/nginx: {{ include (print $.Template.BasePath "/configmap-nginx.yaml") . | sha256sum }}
+        checksum/php-fpm: {{ include (print $.Template.BasePath "/configmap-php-fpm.yaml") . | sha256sum }}
+        checksum/php-ini: {{ include (print $.Template.BasePath "/configmap-php-ini.yaml") . | sha256sum }}
+        {{- if .Values.tinyFileManager.enabled }}
+        checksum/tinyfilemanager: {{ include (print $.Template.BasePath "/configmap-tinyfilemanager.yaml") . | sha256sum }}
+        {{- end }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "php-multisite.selectorLabels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+
+      {{- if .Values.initContainers.enabled }}
+      initContainers:
+        - name: setup
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -e
+              echo "Setting up multi-site environment..."
+
+              NGINX_UID=33
+              NGINX_GID=33
+
+              echo "Creating domain directories under /var/www/html..."
+              {{- range .Values.domains.list }}
+              mkdir -p /var/www/html/domains/{{ . }}
+
+              if [ ! -f /var/www/html/{{ . }}/index.php ]; then
+                cat > /var/www/html/domains/{{ . }}/index.php << 'EOF'
+              <?php
+              echo "<h1>Welcome to {{ . }}</h1>";
+              echo "<p>Domain is working! Upload your files to replace this page.</p>";
+              ?>
+              EOF
+              fi
+              echo "✓ Created directory: /var/www/html/domains/{{ . }}"
+              {{- end }}
+
+              {{- if .Values.tinyFileManager.enabled }}
+              echo "Setting up TinyFileManager..."
+              mkdir -p /var/www/html/filemanager
+
+              if [ -f /tmp/tinyfilemanager/index.php ]; then
+                cp /tmp/tinyfilemanager/index.php /var/www/html/filemanager/
+                echo "✓ index copied"
+              else
+                echo "ERROR: index files not found!"
+                exit 1
+              fi
+
+              if [ -f /tmp/tinyfilemanager/config.php ]; then
+                cp /tmp/tinyfilemanager/config.php /var/www/html/filemanager/
+                echo "✓ config copied"
+              else
+                echo "ERROR: config files not found!"
+                exit 1
+              fi
+              {{- end }}
+
+              mkdir -p /tmp/php-sessions
+              mkdir -p /tmp/php-upload
+
+              echo "Setting permissions..."
+              #chown -R 33:33 /var/www/html
+              #chown -R 33:33 /tmp/php-sessions
+              #chown -R 33:33 /tmp/php-upload
+
+              find /var/www/html -type d -exec chmod 755 {} \;
+              find /var/www/html -type f -exec chmod 644 {} \;
+              chmod -R 755 /var/www/html/filemanager
+
+              echo "✓ Setup completed successfully!"
+              echo "Domains configured: {{ join ", " .Values.domains.list }}"
+          volumeMounts:
+            - name: html
+              mountPath: /var/www/html
+            {{- if .Values.tinyFileManager.enabled }}
+            - name: tinyfilemanager
+              mountPath: /tmp/tinyfilemanager
+            {{- end }}
+          securityContext:
+            runAsUser: 33
+            runAsGroup: 33
+      {{- end }}
+
+      containers:
+        - name: php-fpm
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: php-fpm
+              containerPort: 9000
+          volumeMounts:
+            - name: html
+              mountPath: /var/www/html
+            - name: php-fpm-config
+              mountPath: /usr/local/etc/php-fpm.d/zz-custom.conf
+              subPath: zz-custom.conf
+            - name: php-ini
+              mountPath: /usr/local/etc/php/conf.d/custom.ini
+              subPath: custom.ini
+            - name: php-fpm-logs
+              mountPath: /var/log/php-fpm
+            - name: php-sessions
+              mountPath: /tmp/php-sessions
+            - name: php-upload
+              mountPath: /tmp/php-upload
+          env:
+            - name: DOMAINS_LIST
+              value: "{{ join "," .Values.domains.list }}"
+
+        - name: nginx
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.nginx.repository }}:{{ .Values.image.nginx.tag }}"
+          imagePullPolicy: {{ .Values.image.nginx.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 80
+          volumeMounts:
+            - name: html
+              mountPath: /var/www/html
+              readOnly: false
+            - name: nginx-config
+              mountPath: /etc/nginx/nginx.conf
+              subPath: nginx.conf
+            - name: nginx-vhosts
+              mountPath: /etc/nginx/conf.d
+            - name: nginx-cache
+              mountPath: /var/cache/nginx
+            - name: nginx-run
+              mountPath: /var/run
+            - name: nginx-logs
+              mountPath: /var/log/nginx
+
+      volumes:
+        - name: php-fpm-logs
+          emptyDir: {}
+        - name: nginx-logs
+          emptyDir: {}
+        - name: php-sessions
+          emptyDir: {}
+        - name: php-upload
+          emptyDir: {}
+
+        - name: html
+          persistentVolumeClaim:
+            claimName: {{ include "php-multisite.pvcName" . }}
+
+        {{- if .Values.tinyFileManager.enabled }}
+        - name: tinyfilemanager
+          configMap:
+            name: {{ include "php-multisite.fullname" . }}-tinyfilemanager
+        {{- end }}
+
+        - name: nginx-config
+          configMap:
+            name: {{ include "php-multisite.fullname" . }}-nginx
+        - name: nginx-vhosts
+          configMap:
+            name: {{ include "php-multisite.fullname" . }}-vhosts
+        - name: php-fpm-config
+          configMap:
+            name: {{ include "php-multisite.fullname" . }}-php-fpm
+        - name: php-ini
+          configMap:
+            name: {{ include "php-multisite.fullname" . }}-php-ini
+
+        - name: nginx-cache
+          emptyDir: {}
+        - name: nginx-run
+          emptyDir: {}

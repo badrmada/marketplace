@@ -1,0 +1,115 @@
+{{- if .Values.tinyFileManager.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "php-multisite.fullname" . }}-tinyfilemanager
+  labels:
+    {{- include "php-multisite.labels" . | nindent 4 }}
+data:
+  index.php: |
+    <?php
+    require_once 'config.php';
+
+    // Inject domain into all internal links before output
+    ob_start(function($buffer) {
+        $domain = defined('FM_ROOT_DOMAIN') ? FM_ROOT_DOMAIN : '';
+        if (empty($domain)) return $buffer;
+
+        // Replace all ?p= occurrences with ?p=...&domain=
+        $buffer = preg_replace(
+            '/(\?p=)([^"\'&]*)/',
+            '?p=$2&domain=' . urlencode($domain),
+            $buffer
+        );
+
+        return $buffer;
+    });
+    ?>
+{{ .Files.Get "files/tinyfilemanager.php" | indent 4 }}
+    <?php ob_end_flush(); ?>
+  
+  config.php: |
+    <?php
+    // Start session
+    @session_name('fm_session');
+    @session_start();
+    
+    $root_path = '/var/www/html/domains/';
+    $root_url  = '';
+
+    // Validate auth headers from Traefik (every request must have these)
+    if (!isset($_SERVER['HTTP_X_USER_ID']) || empty($_SERVER['HTTP_X_USER_ID'])) {
+        http_response_code(401);
+        die("Error: Unauthorized - Missing authentication");
+    }
+    
+    if (!isset($_SERVER['HTTP_X_TARGET_DOMAIN']) || empty($_SERVER['HTTP_X_TARGET_DOMAIN'])) {
+        http_response_code(400);
+        die("Error: Missing target domain");
+    }
+    
+    // Get validated data from auth headers
+    $user_id = $_SERVER['HTTP_X_USER_ID'];
+    $user_email = $_SERVER['HTTP_X_USER_EMAIL'] ?? '';
+    $user_namespace = $_SERVER['HTTP_X_USER_NAMESPACE'] ?? '';
+    $domain = $_SERVER['HTTP_X_TARGET_DOMAIN'];
+
+    // Security validations
+    if (!preg_match('/^[a-zA-Z0-9.-]+$/', $domain)) {
+        http_response_code(400);
+        die("Error: invalid domain format.");
+    }
+
+    if (strpos($domain, '..') !== false) {
+        http_response_code(400);
+        die("Error: invalid domain.");
+    }
+
+    // Validate against chart-configured domains
+    $chart_allowed_domains = array(
+        {{- range $index, $domain := .Values.domains.list }}
+        '{{ $domain }}'{{ if ne $index (sub (len $.Values.domains.list) 1) }},{{ end }}
+        {{- end }}
+    );
+    
+    if (!in_array($domain, $chart_allowed_domains)) {
+        http_response_code(403);
+        die("Nice try !");
+    }
+
+    // Build and validate path
+    $full_path = $root_path . $domain . '/';
+    $real = realpath($full_path);
+    $real_root = realpath($root_path);
+
+    if ($real === false || strpos($real, $real_root) !== 0) {
+        http_response_code(500);
+        die("Error: invalid domain path.");
+    }
+
+    $root_path = $full_path;
+    define('FM_ROOT_DOMAIN', $domain);
+    define('APP_TITLE', 'File Manager - ' . $domain . ' (' . $user_email . ')');
+    
+    // TinyFileManager Config
+    $use_auth = false;
+    $show_hidden_files = {{ .Values.tinyFileManager.showHiddenFiles | default false }};
+    $default_timezone = '{{ .Values.php.timezone }}';
+    $max_upload_size_bytes = {{ mul (atoi (regexFind "[0-9]+" .Values.php.ini.upload_max_filesize)) 1048576 }};
+    $allowed_file_extensions = '{{ .Values.tinyFileManager.allowedExtensions | default "" }}';
+    $allowed_upload_extensions = '{{ .Values.tinyFileManager.allowedUploadExtensions | default "" }}';
+    $edit_files = {{ .Values.tinyFileManager.allowEdit | default true }};
+    $send_mail = false;
+    $totp = false;
+    $sticky_navbar = true;
+    $show_second_path = false;
+    $show_path_in_title = true;
+    $show_filesize = true;
+    $show_filedate = true;
+    $use_highlightjs = true;
+    $highlightjs_style = 'vs';
+    $highlight_extension = 'txt,log,xml,html,css,js,php,py,sh,yaml,yml,json,md,htaccess,conf,ini';
+    $online_viewer = 'google';
+    $exclude_items = array('.git', '.svn', '.DS_Store', 'Thumbs.db');
+    ?>
+{{- end }}
