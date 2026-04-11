@@ -1,0 +1,39 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: admin-php-multisite
+  namespace: argocd
+  labels:
+    managed-by: gitops
+    user: admin-php-multisite
+spec:
+  project: default
+  destination:
+    namespace: admin-ns
+    server: https://kubernetes.default.svc
+  source:
+    repoURL: https://github.com/badrmada/marketplace
+    path: charts/admin-php-multisite
+    targetRevision: HEAD
+    helm:
+      valuesObject:
+        user:
+          username: admin
+        domains:
+          list:
+          - abc.kubepanel.xyz
+        ingress:
+          auth:
+            url: http://api.kubepanel.xyz/api/v1/auth/verify
+          filemanager:
+            host: admin.files.kubepanel.xyz
+            enabled: true
+        cloudflare:
+          enabled: true
+          apiToken: 8231e767fefe3e15fdf0d3bae61489e6e5e95
+          email: mada.badr.eddine@outlook.com
+          acmeServer: https://acme-v02.api.letsencrypt.org/directory
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
