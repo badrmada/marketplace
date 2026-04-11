@@ -13,7 +13,7 @@ spec:
     server: https://kubernetes.default.svc
   source:
     repoURL: https://github.com/badrmada/marketplace
-    path: charts
+    path: charts/php-multisite
     targetRevision: HEAD
     helm:
       valuesObject:
