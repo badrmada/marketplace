@@ -230,3 +230,9 @@ cloudflare:
   apiToken: '' # injected per-tenant at deploy time
   email: ''
   acmeServer: 'https://acme-v02.api.letsencrypt.org/directory'
+
+orchestrationNamespace: 'default'
+authMiddleware: 'kubepanel-auth'
+stripMiddleware: 'strip-prefix'
+serviceName: 'testuser-php-multisite'
+tlsSecret: 'filemanager-secret' #Should be copied to the same namespace as the release (or you can use a ClusterIssuer and reference it in your main ingress)
