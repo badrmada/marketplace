@@ -5,7 +5,7 @@ $CONFIG = '{"lang":"en","error_reporting":false,"show_hidden":false,"hide_Cols":
 /**
  * H3K ~ Tiny File Manager V2.6
  * @author CCP Programmers
- * @github https://github.com/prasathmani/tinyfilemanager
+ * @github 
  * @link https://tinyfilemanager.github.io
  */
 
@@ -1674,24 +1674,7 @@ if (isset($_GET['help'])) {
             </h6>
             <div class="card-body">
                 <div class="row">
-                    <div class="col-xs-12 col-sm-6">
-                        <p>
-                        <h3><a href="https://github.com/prasathmani/tinyfilemanager" target="_blank" class="app-v-title"> Tiny File Manager <?php echo VERSION; ?></a></h3>
-                        </p>
-                        <p>Author: PRAŚATH MANİ</p>
-                        <p>Mail Us: <a href="mailto:ccpprogrammers@gmail.com">ccpprogrammers [at] gmail [dot] com</a> </p>
-                    </div>
-                    <div class="col-xs-12 col-sm-6">
-                        <div class="card">
-                            <ul class="list-group list-group-flush">
-                                <li class="list-group-item"><a href="https://github.com/prasathmani/tinyfilemanager/wiki" target="_blank"><i class="fa fa-question-circle"></i> <?php echo lng('Help Documents') ?> </a> </li>
-                                <li class="list-group-item"><a href="https://github.com/prasathmani/tinyfilemanager/issues" target="_blank"><i class="fa fa-bug"></i> <?php echo lng('Report Issue') ?></a></li>
-                                <?php if (!FM_READONLY) { ?>
-                                    <li class="list-group-item"><a href="javascript:show_new_pwd();"><i class="fa fa-lock"></i> <?php echo lng('Generate new password hash') ?></a></li>
-                                <?php } ?>
-                            </ul>
-                        </div>
-                    </div>
+
                 </div>
                 <div class="row js-new-pwd hidden mt-2">
                     <div class="col-12">
